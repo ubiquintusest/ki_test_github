@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import math
+import ssl
 import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -35,6 +36,8 @@ def get_air_temperature_by_postal_code(
     postleitzahl: str,
     von: date | str,
     bis: date | str,
+    *,
+    verify_ssl: bool = True,
 ) -> dict:
     """
     Fetch daily air temperatures (TT_TU) from the nearest DWD station.
@@ -53,11 +56,14 @@ def get_air_temperature_by_postal_code(
     if start_date > end_date:
         raise ValueError("'von' must be before or equal to 'bis'")
 
-    location = _geocode_postal_code(postleitzahl)
-    stations = _fetch_stations()
+    ssl_context = _create_ssl_context(verify_ssl)
+    location = _geocode_postal_code(postleitzahl, ssl_context)
+    stations = _fetch_stations(ssl_context)
     nearest = _find_nearest_station(location[0], location[1], stations)
 
-    temps = _fetch_temperatures(nearest.station_id, start_date, end_date)
+    temps = _fetch_temperatures(
+        nearest.station_id, start_date, end_date, ssl_context
+    )
 
     return {
         "station": {
@@ -77,7 +83,9 @@ def _ensure_date(value: date | str) -> date:
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
-def _geocode_postal_code(postleitzahl: str) -> tuple[float, float]:
+def _geocode_postal_code(
+    postleitzahl: str, ssl_context: ssl.SSLContext
+) -> tuple[float, float]:
     payload = _http_get_json(
         NOMINATIM_URL,
         params={
@@ -87,6 +95,7 @@ def _geocode_postal_code(postleitzahl: str) -> tuple[float, float]:
             "limit": 1,
         },
         headers={"User-Agent": "dwd-weather/0.1"},
+        ssl_context=ssl_context,
     )
     if not payload:
         raise ValueError(f"No location found for postal code {postleitzahl}")
@@ -95,8 +104,8 @@ def _geocode_postal_code(postleitzahl: str) -> tuple[float, float]:
     return lat, lon
 
 
-def _fetch_stations() -> list[dict]:
-    text = _http_get_text(DWD_STATION_LIST_URL)
+def _fetch_stations(ssl_context: ssl.SSLContext) -> list[dict]:
+    text = _http_get_text(DWD_STATION_LIST_URL, ssl_context=ssl_context)
     lines = text.splitlines()
     stations = []
     for line in lines:
@@ -155,11 +164,14 @@ def _find_nearest_station(
 
 
 def _fetch_temperatures(
-    station_id: str, start_date: date, end_date: date
+    station_id: str,
+    start_date: date,
+    end_date: date,
+    ssl_context: ssl.SSLContext,
 ) -> list[dict]:
     zip_name = f"tageswerte_KL_{station_id}_akt.zip"
     url = f"{DWD_DAILY_KL_BASE_URL}/{zip_name}"
-    content = _http_get_bytes(url)
+    content = _http_get_bytes(url, ssl_context=ssl_context)
 
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
         data_name = next(
@@ -192,25 +204,48 @@ def _fetch_temperatures(
             return results
 
 
-def _http_get_json(url: str, params: dict | None = None, headers: dict | None = None):
-    payload = _http_get_bytes(url, params=params, headers=headers)
+def _http_get_json(
+    url: str,
+    params: dict | None = None,
+    headers: dict | None = None,
+    ssl_context: ssl.SSLContext | None = None,
+):
+    payload = _http_get_bytes(
+        url, params=params, headers=headers, ssl_context=ssl_context
+    )
     return json.loads(payload.decode("utf-8"))
 
 
-def _http_get_text(url: str, params: dict | None = None, headers: dict | None = None) -> str:
-    payload = _http_get_bytes(url, params=params, headers=headers)
+def _http_get_text(
+    url: str,
+    params: dict | None = None,
+    headers: dict | None = None,
+    ssl_context: ssl.SSLContext | None = None,
+) -> str:
+    payload = _http_get_bytes(
+        url, params=params, headers=headers, ssl_context=ssl_context
+    )
     return payload.decode("utf-8")
 
 
 def _http_get_bytes(
-    url: str, params: dict | None = None, headers: dict | None = None
+    url: str,
+    params: dict | None = None,
+    headers: dict | None = None,
+    ssl_context: ssl.SSLContext | None = None,
 ) -> bytes:
     final_url = url
     if params:
         final_url = f"{url}?{urlencode(params)}"
     request = Request(final_url, headers=headers or {})
-    with urlopen(request, timeout=30) as response:
+    with urlopen(request, timeout=30, context=ssl_context) as response:
         return response.read()
+
+
+def _create_ssl_context(verify_ssl: bool) -> ssl.SSLContext:
+    if verify_ssl:
+        return ssl.create_default_context()
+    return ssl._create_unverified_context()
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

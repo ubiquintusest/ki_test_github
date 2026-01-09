@@ -42,7 +42,7 @@ def _build_zip_payload(station_id: str) -> bytes:
     return buffer.getvalue()
 
 
-def _fake_urlopen(request, timeout=30):
+def _fake_urlopen(request, timeout=30, context=None):
     parsed = urlparse(request.full_url)
     if parsed.netloc == "nominatim.openstreetmap.org":
         query = parse_qs(parsed.query)
@@ -68,3 +68,17 @@ def test_get_air_temperature_by_postal_code_returns_nearest_station_and_data():
         {"date": "2024-01-01", "temperature_c": 1.5},
         {"date": "2024-01-02", "temperature_c": 2.5},
     ]
+
+
+def test_get_air_temperature_by_postal_code_allows_disabling_ssl_verification():
+    with patch("dwd_weather.client.urlopen", side_effect=_fake_urlopen):
+        with patch(
+            "dwd_weather.client.ssl._create_unverified_context",
+            wraps=lambda: object(),
+        ) as create_unverified:
+            result = get_air_temperature_by_postal_code(
+                "10115", date(2024, 1, 1), date(2024, 1, 2), verify_ssl=False
+            )
+
+    assert create_unverified.called
+    assert len(result["temperatures"]) == 2

@@ -26,3 +26,19 @@ print(result)
 ```
 
 Die Funktion liefert Station-Metadaten und eine Liste von Temperaturwerten je Tag.
+
+### Hinweis zu SSL-Zertifikaten
+
+Wenn dein System keine gültigen Root-Zertifikate hat, kann der HTTPS-Aufruf fehlschlagen.
+In diesem Fall kannst du testweise die SSL-Prüfung deaktivieren:
+
+```python
+result = get_air_temperature_by_postal_code(
+    "10115",
+    "2024-01-01",
+    "2024-01-07",
+    verify_ssl=False,
+)
+```
+
+Bitte nutze `verify_ssl=False` nur lokal zum Debuggen.
