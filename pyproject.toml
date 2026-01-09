@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dwd-weather"
+version = "0.1.0"
+description = "Fetch air temperature data from the nearest DWD station by postal code."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "OpenAI", email = "example@example.com"}]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=7.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dwd_weather"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
