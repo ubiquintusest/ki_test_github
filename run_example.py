@@ -1,4 +1,7 @@
 import argparse
+import ssl
+import sys
+import urllib.error
 
 from dwd_weather import get_air_temperature_by_postal_code
 
@@ -13,12 +16,22 @@ def main() -> None:
         help="Disable SSL verification (use only for local debugging).",
     )
     args = parser.parse_args()
-    result = get_air_temperature_by_postal_code(
-        "10115",
-        "2024-01-01",
-        "2024-01-07",
-        verify_ssl=not args.insecure,
-    )
+    try:
+        result = get_air_temperature_by_postal_code(
+            "10115",
+            "2024-01-01",
+            "2024-01-07",
+            verify_ssl=not args.insecure,
+        )
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, ssl.SSLCertVerificationError):
+            print(
+                "SSL certificate verification failed. "
+                "Rerun with --insecure to disable verification for local debugging.",
+                file=sys.stderr,
+            )
+            raise SystemExit(2) from exc
+        raise
     print(result)
 
 
